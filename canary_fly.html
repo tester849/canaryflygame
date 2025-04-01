@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canary Fly Game</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #70c5ce;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        canvas {
+            background-color: #fff;
+            border: 2px solid #000;
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            color: red;
+            display: none;
+        }
+
+        #menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 36px;
+            color: black;
+            text-align: center;
+        }
+
+        #startButton, #restartButton {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        #startButton:hover, #restartButton:hover {
+            background-color: #45a049;
+        }
+
+        #scoreBoard {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 18px;
+            color: black;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <div id="menu">
+        <h1>Canary Fly Game</h1>
+        <button id="startButton">Start</button>
+    </div>
+    <div id="gameOver">
+        Game Over
+        <br>
+        <button id="restartButton">Restart</button>
+    </div>
+    <div id="scoreBoard">Score: 0 | High Score: 0</div>
+
+    <script>
+        // Get canvas and context
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game constants
+        const GRAVITY = 0.6;
+        const FLAP_STRENGTH = -10;
+        const SPAWN_RATE = 90;
+        const PIPE_WIDTH = 60;
+        const PIPE_SPACING = 200;
+
+        // Game state
+        let canaryY = canvas.height / 2;
+        let velocity = 0;
+        let pipes = [];
+        let isGameOver = false;
+        let score = 0;
+        let highScore = localStorage.getItem('highScore') ? parseInt(localStorage.getItem('highScore')) : 0;
+
+        // DOM elements
+        const gameOverElement = document.getElementById('gameOver');
+        const scoreBoard = document.getElementById('scoreBoard');
+        const menu = document.getElementById('menu');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+
+        // Event listener for the left-click (mouse)
+        canvas.addEventListener('click', () => {
+            if (isGameOver) {
+                restartGame();
+            } else {
+                velocity = FLAP_STRENGTH; // Make the canary flap upwards
+            }
+        });
+
+        // Event listener for the Start button
+        startButton.addEventListener('click', () => {
+            menu.style.display = 'none';
+            gameLoop();
+        });
+
+        // Event listener for the Restart button
+        restartButton.addEventListener('click', () => {
+            restartGame();
+        });
+
+        // Event listener for touch events (mobile support)
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();  // Prevents default touch behavior (like scrolling)
+            if (isGameOver) {
+                restartGame();
+            } else {
+                velocity = FLAP_STRENGTH; // Make the canary flap upwards
+            }
+        });
+
+        // Canary class
+        class Canary {
+            constructor() {
+                this.width = 40;
+                this.height = 40;
+                this.x = 50;
+                this.y = canaryY;
+            }
+
+            draw() {
+                ctx.fillStyle = 'yellow';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.width / 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            update() {
+                this.y += velocity;
+                velocity += GRAVITY; // Apply gravity
+            }
+
+            reset() {
+                this.y = canvas.height / 2;
+                velocity = 0;
+            }
+        }
+
+        // Pipe class
+        class Pipe {
+            constructor() {
+                this.x = canvas.width;
+                this.topHeight = Math.floor(Math.random() * (canvas.height / 2));
+                this.bottomHeight = canvas.height - this.topHeight - PIPE_SPACING;
+                this.passed = false;
+            }
+
+            draw() {
+                // Top pipe
+                ctx.fillStyle = 'green';
+                ctx.fillRect(this.x, 0, PIPE_WIDTH, this.topHeight);
+
+                // Bottom pipe
+                ctx.fillRect(this.x, canvas.height - this.bottomHeight, PIPE_WIDTH, this.bottomHeight);
+            }
+
+            update() {
+                this.x -= 2; // Move pipe leftwards
+
+                if (!this.passed && this.x + PIPE_WIDTH < canvas.width / 2) {
+                    this.passed = true;
+                    score++; // Increment score when pipe passes
+                    if (score > highScore) {
+                        highScore = score;
+                        localStorage.setItem('highScore', highScore);
+                    }
+                }
+            }
+
+            isOffScreen() {
+                return this.x + PIPE_WIDTH < 0;
+            }
+
+            isCollision(canary) {
+                // Collision detection
+                if (
+                    canary.x + canary.width / 2 > this.x &&
+                    canary.x - canary.width / 2 < this.x + PIPE_WIDTH &&
+                    (canary.y - canary.height / 2 < this.topHeight ||
+                    canary.y + canary.height / 2 > canvas.height - this.bottomHeight)
+                ) {
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        // Restart the game
+        function restartGame() {
+            canary.reset();
+            pipes = [];
+            score = 0;
+            isGameOver = false;
+            gameOverElement.style.display = 'none';
+            scoreBoard.style.display = 'block';
+            gameLoop();
+        }
+
+        // Main game loop
+        const canary = new Canary();
+
+        function gameLoop() {
+            if (isGameOver) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw the canary
+            canary.update();
+            canary.draw();
+
+            // Generate pipes
+            if (Math.random() * SPAWN_RATE < 1) {
+                pipes.push(new Pipe());
+            }
+
+            // Update and draw pipes
+            pipes.forEach(pipe => {
+                pipe.update();
+                pipe.draw();
+
+                // Check for collisions
+                if (pipe.isCollision(canary)) {
+                    isGameOver = true;
+                    gameOverElement.style.display = 'block';
+                    scoreBoard.style.display = 'none';
+                }
+
+                // Remove off-screen pipes
+                if (pipe.isOffScreen()) {
+                    pipes.shift();
+                }
+            });
+
+            // Update score display
+            scoreBoard.textContent = `Score: ${score} | High Score: ${highScore}`;
+
+            // Request the next frame
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start the game when page loads
+        menu.style.display = 'block';
+    </script>
+</body>
+</html>
